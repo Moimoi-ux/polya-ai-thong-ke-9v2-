@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Ghi chú: tách rõ "get" (đọc 1 tài liệu) và "list" (đọc danh sách/truy vấn).
+    // Bản cũ chỉ có "allow read: if isValidId(...)" – điều kiện dựa trên mã tài liệu
+    // không áp dụng được cho truy vấn danh sách nên Firestore có thể từ chối
+    // ("Missing or insufficient permissions") → thư viện không đọc được đề đã lưu.
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // 1. Quy trình Pólya (thư viện đề)
+    match /processes/{processId} {
+      allow get: if isValidId(processId);
+      allow list: if true;
+      allow create, update: if isValidId(processId)
+        && request.resource.data.id is string
+        && request.resource.data.textHash is string
+        && request.resource.data.dataHash is string;
+      allow delete: if isValidId(processId);
+    }
+
+    // 2. Học sinh
+    match /students/{studentId} {
+      allow get: if isValidId(studentId);
+      allow list: if true;
+      allow create, update: if isValidId(studentId)
+        && request.resource.data.name is string
+        && request.resource.data.className is string
+        && request.resource.data.school is string;
+      allow delete: if isValidId(studentId);
+    }
+
+    // 3. Lượt làm bài
+    match /attempts/{attemptId} {
+      allow get: if isValidId(attemptId);
+      allow list: if true;
+      allow create, update: if isValidId(attemptId)
+        && request.resource.data.studentId is string
+        && request.resource.data.processId is string;
+      allow delete: if isValidId(attemptId);
+    }
+
+    // 4. Từng câu trả lời
+    match /answerEvents/{eventId} {
+      allow get: if isValidId(eventId);
+      allow list: if true;
+      allow create, update: if isValidId(eventId)
+        && request.resource.data.attemptId is string;
+      allow delete: if isValidId(eventId);
+    }
+
+    // 5. Bài tập giao
+    match /assignments/{assignmentId} {
+      allow get: if isValidId(assignmentId);
+      allow list: if true;
+      allow create, update: if isValidId(assignmentId)
+        && request.resource.data.processId is string;
+      allow delete: if isValidId(assignmentId);
+    }
+
+    // 6. Nhật ký tạo đề lỗi
+    match /generationFailures/{failureId} {
+      allow get: if isValidId(failureId);
+      allow list: if true;
+      allow write: if isValidId(failureId);
+    }
+
+    // Mặc định chặn mọi đường dẫn khác
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

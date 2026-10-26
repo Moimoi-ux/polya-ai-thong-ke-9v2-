@@ -1,0 +1,134 @@
+{
+  "entities": {
+    "Process": {
+      "title": "Process",
+      "description": "A generated 4-step Polya interactive solution process for a Grade 9 Statistics problem",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "textHash": { "type": "string" },
+        "dataHash": { "type": "string" },
+        "templateVersion": { "type": "string" },
+        "problemText": { "type": "string" },
+        "problemImageUrl": { "type": "string" },
+        "analysis": { "type": "object" },
+        "computed": { "type": "object" },
+        "parts": { "type": "array" },
+        "aiPolished": { "type": "boolean" },
+        "status": { "type": "string" },
+        "usageCount": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "textHash", "dataHash", "problemText", "status", "createdAt"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "className": { "type": "string" },
+        "school": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "className", "school"]
+    },
+    "Attempt": {
+      "title": "Attempt",
+      "description": "A student's attempt to solve a Polya process",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "processId": { "type": "string" },
+        "attemptNo": { "type": "number" },
+        "startedAt": { "type": "string" },
+        "finishedAt": { "type": "string" },
+        "status": { "type": "string" },
+        "score": { "type": "number" },
+        "wrongTotal": { "type": "number" },
+        "wrongByStep": { "type": "object" },
+        "timeByStep": { "type": "object" },
+        "reflections": { "type": "object" },
+        "progress": { "type": "object" },
+        "assignmentId": { "type": "string" }
+      },
+      "required": ["id", "studentId", "processId", "status"]
+    },
+    "AnswerEvent": {
+      "title": "AnswerEvent",
+      "description": "Fine-grained interaction log for learning analytics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "attemptId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "processId": { "type": "string" },
+        "dangBai": { "type": "string" },
+        "partLabel": { "type": "string" },
+        "stepNo": { "type": "number" },
+        "phase": { "type": "string" },
+        "interactionId": { "type": "string" },
+        "answer": { "type": "string" },
+        "isCorrect": { "type": "boolean" },
+        "tryNo": { "type": "number" },
+        "hintLevelShown": { "type": "number" },
+        "usedModelSolution": { "type": "boolean" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "attemptId", "interactionId", "isCorrect"]
+    },
+    "Assignment": {
+      "title": "Assignment",
+      "description": "Teacher homework assignment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "processId": { "type": "string" },
+        "title": { "type": "string" },
+        "className": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "processId"]
+    },
+    "GenerationFailure": {
+      "title": "GenerationFailure",
+      "description": "Log of failed problem analyses or processes for teacher review",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "problemText": { "type": "string" },
+        "reason": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "reason"]
+    }
+  },
+  "firestore": {
+    "/processes/{processId}": {
+      "schema": "Process",
+      "description": "Collection of generated Polya processes"
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Student identity records"
+    },
+    "/attempts/{attemptId}": {
+      "schema": "Attempt",
+      "description": "Records of student learning sessions"
+    },
+    "/answerEvents/{eventId}": {
+      "schema": "AnswerEvent",
+      "description": "Item-level logs of all student answers"
+    },
+    "/assignments/{assignmentId}": {
+      "schema": "Assignment",
+      "description": "Teacher assignments"
+    },
+    "/generationFailures/{failureId}": {
+      "schema": "GenerationFailure",
+      "description": "Failed generation logs"
+    }
+  }
+}
