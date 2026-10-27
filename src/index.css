@@ -1,1 +1,138 @@
 @import "tailwindcss";
+
+/*
+ * BẢNG MÀU GIAO DIỆN (chỉ đổi màu, không đổi bố cục / nội dung)
+ * - Màu chính: tím than (indigo–violet) – thay cho xanh dương cũ (blue, indigo).
+ * - Nền trang: trắng ngà ấm; thẻ/khung: trắng, viền tím xám nhạt → các khối tách biệt rõ.
+ * - Góc phản tư (purple cũ): xanh thép dịu, để tách khỏi màu chính.
+ * - Xanh lá (đúng, gợi ý), vàng cam (khó khăn, cảnh báo – làm dịu lại), đỏ (sai): giữ nghĩa cũ.
+ */
+@theme {
+  /* Màu chính – tím than */
+  --color-blue-50: #f3f1fb;
+  --color-blue-100: #e8e5f7;
+  --color-blue-200: #d3cdf0;
+  --color-blue-300: #b4aae3;
+  --color-blue-400: #8e80cf;
+  --color-blue-500: #6a5bba;
+  --color-blue-600: #4f41a6;
+  --color-blue-700: #42358f;
+  --color-blue-800: #362c76;
+  --color-blue-900: #2b245e;
+  --color-blue-950: #1b173d;
+
+  --color-indigo-50: #f3f1fb;
+  --color-indigo-100: #e8e5f7;
+  --color-indigo-200: #d3cdf0;
+  --color-indigo-300: #b4aae3;
+  --color-indigo-400: #8e80cf;
+  --color-indigo-500: #6a5bba;
+  --color-indigo-600: #4f41a6;
+  --color-indigo-700: #42358f;
+  --color-indigo-800: #362c76;
+  --color-indigo-900: #2b245e;
+  --color-indigo-950: #1b173d;
+
+  /* Góc phản tư / thống kê phụ – xanh thép dịu */
+  --color-purple-50: #f1f6fa;
+  --color-purple-100: #e1ecf5;
+  --color-purple-200: #c6daea;
+  --color-purple-300: #9dbfda;
+  --color-purple-400: #6e9dc4;
+  --color-purple-500: #4d80ae;
+  --color-purple-600: #3b6894;
+  --color-purple-700: #31567a;
+  --color-purple-800: #2a4865;
+  --color-purple-900: #243c54;
+  --color-purple-950: #172738;
+
+  /* Vàng cam (khó khăn, cảnh báo, ý đang làm) – dịu hơn, bớt chói */
+  --color-amber-50: #fdf8ec;
+  --color-amber-100: #faefd3;
+  --color-amber-200: #f3dca4;
+  --color-amber-300: #eac36c;
+  --color-amber-400: #e2a93f;
+  --color-amber-500: #d38f1f;
+  --color-amber-600: #b47414;
+  --color-amber-700: #8f5a12;
+  --color-amber-800: #744814;
+  --color-amber-900: #5f3c14;
+  --color-amber-950: #361f07;
+
+  /* Màu trung tính – nền ngà ấm, viền và chữ ngả tím xám */
+  --color-slate-50: #f6f5f2;
+  --color-slate-100: #eeedea;
+  --color-slate-200: #e2e0e6;
+  --color-slate-300: #cbc9d1;
+  --color-slate-400: #9c99a6;
+  --color-slate-500: #6f6c7a;
+  --color-slate-600: #565363;
+  --color-slate-700: #423f4e;
+  --color-slate-800: #2d2b37;
+  --color-slate-900: #1d1b25;
+  --color-slate-950: #121118;
+
+  /* Bóng đổ nhẹ, ánh tím – giúp các khối nổi khỏi nền */
+  --shadow-2xs: 0 1px 0 rgb(43 36 94 / 0.04);
+  --shadow-xs: 0 1px 2px rgb(43 36 94 / 0.06), 0 0 0 1px rgb(43 36 94 / 0.02);
+  --shadow-sm: 0 1px 3px rgb(43 36 94 / 0.08), 0 1px 2px rgb(43 36 94 / 0.05);
+  --shadow-md: 0 4px 10px -2px rgb(43 36 94 / 0.10), 0 2px 4px -2px rgb(43 36 94 / 0.06);
+  --shadow-lg: 0 12px 24px -8px rgb(43 36 94 / 0.18), 0 4px 8px -4px rgb(43 36 94 / 0.08);
+}
+
+/* Cỡ chữ rất nhỏ cho nhãn/chip (code dùng "text-2xs" nhưng Tailwind không có sẵn → chữ bị to bất thường) */
+@theme {
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+}
+
+/*
+ * Tailwind v4: class "border" không ghi màu sẽ lấy màu chữ (đen) → khung viền đen đậm.
+ * Đặt màu viền mặc định là xám nhạt như Tailwind v3.
+ */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-slate-200, currentColor);
+  }
+}
+
+body {
+  background-color: var(--color-slate-50);
+}
+
+::selection {
+  background-color: var(--color-blue-200);
+  color: var(--color-blue-950);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-scaleUp {
+  animation: scaleUp 0.25s ease-out;
+}

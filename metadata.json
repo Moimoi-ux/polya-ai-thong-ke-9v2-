@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "Polya AI – Bảng tần số và biểu đồ tần số (Toán 9)",
+  "description": "Ứng dụng tương tác hướng dẫn giải toán Bài 22 – Bảng tần số và biểu đồ tần số (Toán 9 KNTT) theo quy trình 4 bước Pólya, có vẽ biểu đồ kéo thả ngay trong quy trình với kiến trúc Code tính toán - AI viết lời dẫn.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

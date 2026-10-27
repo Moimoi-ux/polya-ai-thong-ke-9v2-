@@ -62,6 +62,14 @@ const status = {
   lastReadOk: null as boolean | null,
 };
 
+/**
+ * Bảng bị luật Firestore chặn quyền "đọc danh sách" (list) nhưng vẫn đọc được qua mục lục.
+ * Đây KHÔNG phải lỗi mất dữ liệu → ghi nhận riêng, không đưa vào "Lỗi lưu trữ gần nhất".
+ */
+const listBlocked: Record<string, string> = {};
+/** Sau khi bị chặn, bỏ qua đọc danh sách trực tiếp trong 6 giờ (đọc thẳng qua mục lục, đỡ báo lỗi lặp lại) */
+const LIST_RETRY_MS = 6 * 60 * 60_000;
+
 // Lệnh ghi chưa thành công → thử lại định kỳ
 interface PendingWrite {
   kind?: 'doc' | 'index';
@@ -354,6 +362,7 @@ async function listCollection<T extends { id: string }>(
         }
       });
       status.lastReadOk = true;
+      delete listBlocked[col];
       readStatus[col] = { ok: true, mode: 'list', at: new Date().toISOString() };
       // Bổ sung mục lục cho dữ liệu cũ (tối đa 30 phút/lần)
       if (!(lastBackfill[col] > Date.now() - 30 * 60_000)) {
@@ -365,10 +374,17 @@ async function listCollection<T extends { id: string }>(
       return mergeById(list, mem);
     } catch (err) {
       const code = String((err as any)?.code || '');
-      if (code === 'permission-denied') listDeniedUntil[col] = Date.now() + 10 * 60_000;
+      if (code === 'permission-denied') {
+        // Luật Firestore chưa cho "đọc danh sách" → chuyển sang đọc qua mục lục (dữ liệu vẫn an toàn).
+        // Không ghi vào lastError; chỉ báo lỗi nếu cả cách đọc qua mục lục cũng thất bại.
+        listDeniedUntil[col] = Date.now() + LIST_RETRY_MS;
+        listBlocked[col] = errMsg(err);
+        console.warn(`[Storage] Luật Firestore chặn đọc danh sách "${col}" → đọc qua mục lục.`);
+      } else {
+        markError(err, `đọc danh sách "${col}"`);
+        console.warn(`[Storage] list ${col} error → thử đọc qua mục lục:`, err);
+      }
       readStatus[col] = { ok: false, mode: 'memory', error: errMsg(err), at: new Date().toISOString() };
-      markError(err, `đọc danh sách "${col}"`);
-      console.warn(`[Storage] list ${col} error → thử đọc qua mục lục:`, err);
     }
   }
 
@@ -458,6 +474,7 @@ export async function checkFirestoreAccess() {
     try {
       await withTimeout(getDocs(query(collection(db, col), limit(1))), 10_000, `đọc ${col}`);
       listDeniedUntil[col] = 0;
+      delete listBlocked[col];
     } catch (err) {
       list = errMsg(err);
     }
@@ -490,6 +507,12 @@ export async function checkFirestoreAccess() {
 }
 
 export function getStorageStatus() {
+  // Lỗi cũ đã được khắc phục: sau lỗi đó đã lưu thành công và không còn lệnh nào chờ ghi
+  const lastErrorResolved =
+    !!status.lastError &&
+    pendingWrites.size === 0 &&
+    !!status.lastSuccessAt &&
+    status.lastSuccessAt > status.lastErrorAt;
   return {
     firestoreConfigured,
     firestoreConnected: isFirestoreConnected(),
@@ -499,7 +522,10 @@ export function getStorageStatus() {
       .map((w) => ({ key: `${w.col}/${w.id}`, error: w.error, since: w.since, tries: w.tries })),
     lastError: status.lastError,
     lastErrorAt: status.lastErrorAt,
+    lastErrorResolved,
     lastSuccessAt: status.lastSuccessAt,
+    /** Các bảng bị chặn "đọc danh sách" nhưng vẫn đọc được qua mục lục */
+    listBlocked: Object.keys(listBlocked),
     readStatus,
   };
 }
@@ -533,6 +559,8 @@ export const storage = {
 
     if (!db) return null;
     try {
+      // Luật Firestore đang chặn truy vấn danh sách → tìm thẳng qua mục lục
+      if (listDeniedUntil['processes'] > Date.now()) throw Object.assign(new Error('list blocked'), { code: 'permission-denied' });
       for (const [field, value] of [
         ['textHash', textHash],
         ['dataHash', dataHash],
@@ -548,7 +576,12 @@ export const storage = {
         }
       }
     } catch (err) {
-      console.warn('[Storage] Firestore hash lookup error → tìm qua mục lục:', err);
+      if (String((err as any)?.code || '') === 'permission-denied') {
+        listDeniedUntil['processes'] = Math.max(listDeniedUntil['processes'] || 0, Date.now() + LIST_RETRY_MS);
+        listBlocked['processes'] = listBlocked['processes'] || errMsg(err);
+      } else {
+        console.warn('[Storage] Firestore hash lookup error → tìm qua mục lục:', err);
+      }
       try {
         const all = await listCollection('processes', memoryCache.processes, decodeProcess);
         const found = all.find((p) => (p.textHash === textHash || p.dataHash === dataHash) && versionOk(p));

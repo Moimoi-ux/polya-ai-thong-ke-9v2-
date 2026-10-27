@@ -369,7 +369,7 @@ export const TeacherPage: React.FC = () => {
       )}
 
       {/* Tabs list */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-1 bg-white p-1.5 rounded-xl border border-slate-200 text-xs md:text-sm font-bold">
+      <div className="flex flex-wrap items-center gap-1 bg-white p-1.5 rounded-xl border border-slate-200 shadow-xs text-xs md:text-sm font-bold">
         {[
           { id: 'overview', label: '📊 Tổng quan' },
           { id: 'gradebook', label: '📋 Bảng điểm' },
@@ -723,7 +723,7 @@ export const TeacherPage: React.FC = () => {
             Trạng thái máy chủ và kết nối:
           </h3>
           <div className="space-y-3 text-xs md:text-sm">
-            <div className="p-3 bg-slate-50 border rounded-lg flex items-center justify-between">
+            <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between gap-3">
               <span className="font-medium">Cơ sở dữ liệu Firebase Firestore:</span>
               {(() => {
                 const st = systemHealth?.storage;
@@ -734,12 +734,8 @@ export const TeacherPage: React.FC = () => {
                   return <span className="font-bold text-red-600">⚠️ Chưa kết nối (chỉ lưu tạm trong bộ nhớ)</span>;
                 if (blocked.length > 0)
                   return <span className="font-bold text-red-600">⚠️ Đã kết nối, nhưng không đọc được: {blocked.join(', ')}</span>;
-                if (viaIndex.length > 0)
-                  return (
-                    <span className="font-bold text-amber-600 text-right">
-                      ✓ Lưu và đọc được (qua mục lục) – nên cập nhật luật Firestore khi có thể
-                    </span>
-                  );
+                if (viaIndex.length > 0 || (st?.listBlocked || []).length > 0)
+                  return <span className="font-bold text-green-700 text-right">✓ Đang lưu và đọc dữ liệu bình thường (qua mục lục)</span>;
                 return <span className="font-bold text-green-600">✓ Đang kết nối Firestore</span>;
               })()}
             </div>
@@ -810,29 +806,48 @@ export const TeacherPage: React.FC = () => {
                   );
                 })()}
             </div>
-            <div className="p-3 bg-slate-50 border rounded-lg flex items-center justify-between">
+            {(systemHealth?.storage?.listBlocked || []).length > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 space-y-1">
+                <div className="font-semibold">ℹ️ Ghi chú (không phải lỗi mất dữ liệu)</div>
+                <div className="text-xs leading-relaxed">
+                  Luật Firestore hiện chưa cho phép "đọc danh sách" ở bảng: <code>{systemHealth.storage.listBlocked.join(', ')}</code>.
+                  Ứng dụng đã tự chuyển sang đọc qua mục lục nên đề và bài làm vẫn được lưu, đọc lại đầy đủ.
+                  Khi vào được Firebase Console, thầy/cô dán nội dung file <code>firestore.rules</code> vào
+                  Firestore Database → Rules → Publish để tắt ghi chú này.
+                </div>
+              </div>
+            )}
+            <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between gap-3">
               <span className="font-medium">Lệnh lưu đang chờ ghi lại vào Firestore:</span>
               <span className={`font-bold ${systemHealth?.storage?.pendingWrites ? 'text-red-600' : 'text-green-600'}`}>
                 {systemHealth?.storage?.pendingWrites ?? 0}
               </span>
             </div>
             {systemHealth?.storage?.lastSuccessAt && (
-              <div className="p-3 bg-slate-50 border rounded-lg flex items-center justify-between">
+              <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between gap-3">
                 <span className="font-medium">Lần lưu thành công gần nhất:</span>
                 <span className="font-semibold text-slate-700">{new Date(systemHealth.storage.lastSuccessAt).toLocaleString('vi-VN')}</span>
               </div>
             )}
-            {systemHealth?.storage?.lastError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 space-y-1">
-                <div className="font-bold">Lỗi lưu trữ gần nhất ({new Date(systemHealth.storage.lastErrorAt).toLocaleString('vi-VN')}):</div>
-                <div className="font-mono text-[11px] break-all">{systemHealth.storage.lastError}</div>
-              </div>
-            )}
-            <div className="p-3 bg-slate-50 border rounded-lg flex items-center justify-between">
+            {systemHealth?.storage?.lastError &&
+              (systemHealth.storage.lastErrorResolved ? (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 space-y-1">
+                  <div className="font-semibold">
+                    ✓ Lỗi lưu trữ lúc {new Date(systemHealth.storage.lastErrorAt).toLocaleString('vi-VN')} đã tự khắc phục (sau đó đã lưu thành công, không còn mục chờ ghi).
+                  </div>
+                  <div className="font-mono text-[11px] break-all text-slate-500">{systemHealth.storage.lastError}</div>
+                </div>
+              ) : (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 space-y-1">
+                  <div className="font-bold">Lỗi lưu trữ gần nhất ({new Date(systemHealth.storage.lastErrorAt).toLocaleString('vi-VN')}):</div>
+                  <div className="font-mono text-[11px] break-all">{systemHealth.storage.lastError}</div>
+                </div>
+              ))}
+            <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between gap-3">
               <span className="font-medium">Model Gemini chính (Primary):</span>
               <span className="font-bold text-blue-700">{systemHealth?.primaryModel}</span>
             </div>
-            <div className="p-3 bg-slate-50 border rounded-lg flex items-center justify-between">
+            <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between gap-3">
               <span className="font-medium">Model Gemini dự phòng (Fallback):</span>
               <span className="font-bold text-blue-700">{systemHealth?.fallbackModel}</span>
             </div>
