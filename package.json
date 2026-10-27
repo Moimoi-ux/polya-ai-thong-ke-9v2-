@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "tsx server.ts",
-    "test": "tsx src/shared/statEngine.test.ts && tsx src/shared/problemText.test.ts && tsx src/shared/bai22/bai22.test.ts && tsx src/shared/bai22/bai22.fuzz.test.ts && tsx server/processGenerator.test.ts",
+    "test": "tsx src/shared/statEngine.test.ts && tsx src/shared/problemText.test.ts && tsx src/shared/bai22/bai22.test.ts && tsx src/shared/bai22/bai22.fuzz.test.ts && tsx server/processGenerator.test.ts && tsx server/geminiSchema.test.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

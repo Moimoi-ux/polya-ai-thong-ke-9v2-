@@ -29,20 +29,23 @@ QUY TẮC BẮT BUỘC (Bài 22 – Bảng tần số và biểu đồ tần s�
      "max", "min" (giá trị xuất hiện nhiều/ít nhất – KHÔNG kèm số), "value_max", "value_min" (độ lớn giá trị),
      "distinct_count", "list_values", "sum_values" (tổng Σ giá trị × tần số), "remark" (nhận xét).
    - Ý lập bảng / vẽ biểu đồ / tìm tần số thiếu / kiểm tra bảng của bạn: dangBai "TS1" / "TS2" (cột) / "TS3" (đoạn thẳng) / "TS5" / "TS6".
-   - Không chắc thì để askKind rỗng. KHÔNG được đoán "max" cho mọi câu.
+   - Không chắc thì KHÔNG ghi trường askKind (bỏ qua trường đó). KHÔNG được đoán "max" cho mọi câu.
 `.trim();
 
 /**
+ * LƯU Ý: Gemini KHÔNG chấp nhận giá trị rỗng "" trong enum (báo lỗi 400 ở responseSchema).
+ * Trường nào không chắc thì AI bỏ trống (không ghi trường đó) – các trường ở đây đều không bắt buộc.
+ *
  * Schema bổ sung cho responseSchema (định dạng @google/genai: 'OBJECT', 'STRING'...).
  * Ghép vào: properties.parts.items.properties.hint, và các trường cấp gốc bên dưới.
  */
 export const BAI22_HINT_SCHEMA = {
   type: 'OBJECT',
   properties: {
-    dangBai: { type: 'STRING', enum: ['TS1', 'TS2', 'TS3', 'TS4', 'TS5', 'TS6', ''] },
+    dangBai: { type: 'STRING', enum: ['TS1', 'TS2', 'TS3', 'TS4', 'TS5', 'TS6'] },
     askKind: {
       type: 'STRING',
-      enum: ['', 'max', 'min', 'value_freq', 'sample_size', 'count_condition', 'count_set', 'values_by_freq', 'compare', 'distinct_count', 'list_values', 'value_max', 'value_min', 'sum_values', 'remark'],
+      enum: ['max', 'min', 'value_freq', 'sample_size', 'count_condition', 'count_set', 'values_by_freq', 'compare', 'distinct_count', 'list_values', 'value_max', 'value_min', 'sum_values', 'remark'],
     },
     condition: {
       type: 'OBJECT',
@@ -56,7 +59,7 @@ export const BAI22_HINT_SCHEMA = {
       },
     },
     targets: { type: 'ARRAY', items: { type: 'STRING' } },
-    compareMode: { type: 'STRING', enum: ['', 'diff', 'ratio', 'which_more'] },
+    compareMode: { type: 'STRING', enum: ['diff', 'ratio', 'which_more'] },
   },
 } as const;
 

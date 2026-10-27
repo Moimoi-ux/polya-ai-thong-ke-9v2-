@@ -146,18 +146,23 @@ export async function callGemini(
         continue;
       }
 
-      // 400 schema error -> retry without schema
+      // 400 (thường do khuôn trả lời/schema) -> thử lại KHÔNG dùng schema, chỉ yêu cầu trả JSON
       if (errMsg.includes('400') && schema) {
         try {
           const fallbackRes = await ai.models.generateContent({
             model: currentModel,
             contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nIMPORTANT: OUTPUT STRICTLY RAW VALID JSON ONLY.` }, ...contentsParts] }],
-            config: { systemInstruction, temperature: 0.1, maxOutputTokens: 2500 },
+            config: { systemInstruction, temperature: 0.1, maxOutputTokens: 4096, responseMimeType: 'application/json' },
           });
           return { ok: true, data: fallbackRes.text || '' };
         } catch (innerErr) {
           console.warn('[Gemini] Fallback without schema failed:', innerErr);
         }
+        // Lỗi 400 không tự hết khi gọi lại y hệt → dừng ngay, báo lỗi rõ ràng
+        return {
+          ok: false,
+          error: { code: 'AI_BAD_REQUEST', message: `Dịch vụ AI từ chối yêu cầu: ${errMsg.substring(0, 400)}` },
+        };
       }
 
       if (attempt === maxAttempts) {
@@ -165,7 +170,7 @@ export async function callGemini(
           ok: false,
           error: {
             code: 'AI_CALL_FAILED',
-            message: `Không thể kết nối với dịch vụ AI: ${errMsg.substring(0, 150)}`,
+            message: `Không thể kết nối với dịch vụ AI: ${errMsg.substring(0, 400)}`,
           },
         };
       }
@@ -177,6 +182,55 @@ export async function callGemini(
     error: { code: 'UNKNOWN', message: 'Lỗi không xác định khi gọi AI.' },
   };
 }
+
+/** Khuôn trả lời (responseSchema) của bước phân tích đề – được kiểm thử tự động (server/geminiSchema.test.ts) */
+export const ANALYSIS_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    readable: { type: 'BOOLEAN' },
+    inScope: { type: 'BOOLEAN' },
+    outOfScopeReason: { type: 'STRING' },
+    problemText: { type: 'STRING' },
+    context: {
+      type: 'OBJECT',
+      properties: {
+        doiTuong: { type: 'STRING' },
+        dauHieu: { type: 'STRING' },
+        donVi: { type: 'STRING' },
+        tenMau: { type: 'STRING' },
+      },
+      required: ['doiTuong', 'dauHieu', 'donVi', 'tenMau'],
+    },
+    sourceKind: { type: 'STRING', enum: ['raw_list', 'raw_table', 'freq_table', 'freq_chart'] },
+    sourceChartKind: { type: 'STRING' },
+    valueKind: { type: 'STRING', enum: ['numeric', 'categorical'] },
+    rawValues: { type: 'ARRAY', items: { type: 'STRING' } },
+    categories: { type: 'ARRAY', items: { type: 'STRING' } },
+    frequencies: { type: 'ARRAY', items: { type: 'NUMBER', nullable: true } },
+    claimedFrequencies: { type: 'ARRAY', nullable: true, items: { type: 'NUMBER', nullable: true } },
+    claimedBy: { type: 'STRING', nullable: true },
+    statedSampleSize: { type: 'NUMBER' },
+    valueLabel: { type: 'STRING' },
+    freqLabel: { type: 'STRING' },
+    chartTitle: { type: 'STRING' },
+    parts: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          label: { type: 'STRING' },
+          question: { type: 'STRING' },
+          dangBai: { type: 'STRING', enum: ['TS1', 'TS2', 'TS3', 'TS4', 'TS5', 'TS6'] },
+          chartKind: { type: 'STRING', enum: ['none', 'bar', 'line'] },
+          hint: BAI22_HINT_SCHEMA,
+        },
+        required: ['label', 'question', 'dangBai', 'chartKind'],
+      },
+    },
+    notes: { type: 'STRING' },
+  },
+  required: ['readable', 'inScope', 'problemText', 'context', 'sourceKind', 'valueKind', 'parts'],
+};
 
 /**
  * AI CALL #1: Problem Analysis (Phân tích đề bài)
@@ -229,55 +283,7 @@ ${textInput}`;
     });
   }
 
-  const analysisSchema = {
-    type: 'OBJECT',
-    properties: {
-      readable: { type: 'BOOLEAN' },
-      inScope: { type: 'BOOLEAN' },
-      outOfScopeReason: { type: 'STRING' },
-      problemText: { type: 'STRING' },
-      context: {
-        type: 'OBJECT',
-        properties: {
-          doiTuong: { type: 'STRING' },
-          dauHieu: { type: 'STRING' },
-          donVi: { type: 'STRING' },
-          tenMau: { type: 'STRING' },
-        },
-        required: ['doiTuong', 'dauHieu', 'donVi', 'tenMau'],
-      },
-      sourceKind: { type: 'STRING', enum: ['raw_list', 'raw_table', 'freq_table', 'freq_chart'] },
-      sourceChartKind: { type: 'STRING' },
-      valueKind: { type: 'STRING', enum: ['numeric', 'categorical'] },
-      rawValues: { type: 'ARRAY', items: { type: 'STRING' } },
-      categories: { type: 'ARRAY', items: { type: 'STRING' } },
-      frequencies: { type: 'ARRAY', items: { type: 'NUMBER', nullable: true } },
-      claimedFrequencies: { type: 'ARRAY', nullable: true, items: { type: 'NUMBER', nullable: true } },
-      claimedBy: { type: 'STRING', nullable: true },
-      statedSampleSize: { type: 'NUMBER' },
-      valueLabel: { type: 'STRING' },
-      freqLabel: { type: 'STRING' },
-      chartTitle: { type: 'STRING' },
-      parts: {
-        type: 'ARRAY',
-        items: {
-          type: 'OBJECT',
-          properties: {
-            label: { type: 'STRING' },
-            question: { type: 'STRING' },
-            dangBai: { type: 'STRING', enum: ['TS1', 'TS2', 'TS3', 'TS4', 'TS5', 'TS6'] },
-            chartKind: { type: 'STRING', enum: ['none', 'bar', 'line'] },
-            hint: BAI22_HINT_SCHEMA,
-          },
-          required: ['label', 'question', 'dangBai', 'chartKind'],
-        },
-      },
-      notes: { type: 'STRING' },
-    },
-    required: ['readable', 'inScope', 'problemText', 'context', 'sourceKind', 'valueKind', 'parts'],
-  };
-
-  const response = await callGemini(prompt, systemPrompt, contentsParts, analysisSchema);
+  const response = await callGemini(prompt, systemPrompt, contentsParts, ANALYSIS_SCHEMA);
   if (!response.ok || !response.data) {
     // If AI failed on typed text, try code fallback
     if (textInput && !imageBuffer) {
