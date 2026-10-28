@@ -16,14 +16,15 @@ QUY TẮC BẮT BUỘC (Bài 22 – Bảng tần số và biểu đồ tần s�
    "donVi": đơn vị của GIÁ TRỊ (VD "năm", "điểm", "bàn thắng"); để "" nếu giá trị không có đơn vị (cỡ giày, tên, xếp loại).
 4. Đề cho biểu đồ: đọc chiều cao từng cột/điểm thành "categories" + "frequencies" theo đúng thứ tự trục ngang.
    Biểu đồ tranh: quy đổi mỗi biểu tượng theo chú thích rồi ghi như bảng tần số.
-5. Ô tần số bị thiếu/nhòe/ghi bằng chữ (x, m, ?) → ghi null vào vị trí đó trong "frequencies". Nếu đề nêu cỡ mẫu thì ghi vào "statedSampleSize".
-6. Đề cho bảng tần số do một bạn lập để kiểm tra đúng/sai → ghi bảng đó vào "claimedFrequencies" (cùng thứ tự categories) và tên bạn vào "claimedBy"; dữ liệu gốc vẫn ghi vào "rawValues".
-7. "hint" của mỗi ý là GỢI Ý phân loại (code sẽ kiểm tra lại):
+5. Ô tần số bị thiếu/nhòe/ghi bằng chữ (x, m, ?) → ghi -1 vào vị trí đó trong "frequencies". Nếu đề nêu cỡ mẫu thì ghi vào "statedSampleSize".
+6. Đề cho bảng tần số do một bạn lập để kiểm tra đúng/sai → ghi bảng đó vào "claimedFrequencies" (cùng thứ tự categories) và tên bạn vào "claimedBy"; dữ liệu gốc vẫn ghi vào "rawValues". Đề không có thì bỏ qua hai trường này.
+7. Các trường askKind, condOn, condOp, condA, condB, targets, compareMode của mỗi ý là GỢI Ý phân loại (code sẽ kiểm tra lại; không chắc thì bỏ qua):
    - askKind = "count_condition" khi hỏi SỐ ĐỐI TƯỢNG có giá trị thỏa điều kiện kèm số:
        "ít nhất k", "không ít hơn k", "từ k trở lên" → op "gte";  "nhiều nhất k", "không quá k" → "lte";
        "trên k", "hơn k" → "gt";  "dưới k", "chưa đến k" → "lt";  "từ a đến b" → "between" (a, b).
+     Ghi điều kiện vào condOp (gte/gt/lte/lt/between/eq), condA (số k hoặc a), condB (số b nếu "between"), condOn = "value".
      CHÚ Ý: "ít nhất 3 năm" KHÔNG phải "giá trị có tần số nhỏ nhất". Khi sau "ít nhất / nhiều nhất" có số, đó là điều kiện.
-   - "values_by_freq" khi điều kiện đặt lên SỐ LƯỢNG (VD "ngày nào có trên 20 học sinh") – condition.on = "freq".
+   - "values_by_freq" khi điều kiện đặt lên SỐ LƯỢNG (VD "ngày nào có trên 20 học sinh") – condOn = "freq".
    - "sample_size" (tổng số đối tượng), "value_freq" (tần số của 1 giá trị – ghi giá trị vào targets),
      "count_set" (cộng tần số nhiều giá trị – ghi các giá trị vào targets), "compare" (2 giá trị, compareMode "diff" | "ratio" | "which_more"),
      "max", "min" (giá trị xuất hiện nhiều/ít nhất – KHÔNG kèm số), "value_max", "value_min" (độ lớn giá trị),
@@ -32,43 +33,11 @@ QUY TẮC BẮT BUỘC (Bài 22 – Bảng tần số và biểu đồ tần s�
    - Không chắc thì KHÔNG ghi trường askKind (bỏ qua trường đó). KHÔNG được đoán "max" cho mọi câu.
 `.trim();
 
-/**
- * LƯU Ý: Gemini KHÔNG chấp nhận giá trị rỗng "" trong enum (báo lỗi 400 ở responseSchema).
- * Trường nào không chắc thì AI bỏ trống (không ghi trường đó) – các trường ở đây đều không bắt buộc.
- *
- * Schema bổ sung cho responseSchema (định dạng @google/genai: 'OBJECT', 'STRING'...).
- * Ghép vào: properties.parts.items.properties.hint, và các trường cấp gốc bên dưới.
+/*
+ * Khuôn trả lời (responseSchema) gửi Gemini nằm ở server/gemini.ts (ANALYSIS_SCHEMA).
+ * Các trường gợi ý được để PHẲNG, chỉ dùng STRING/NUMBER/ARRAY – không dùng enum rỗng, không dùng "nullable"
+ * (bản v3–v5 dùng enum có giá trị rỗng "" nên Gemini báo lỗi 400). server/geminiSchema.test.ts kiểm tra tự động.
  */
-export const BAI22_HINT_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    dangBai: { type: 'STRING', enum: ['TS1', 'TS2', 'TS3', 'TS4', 'TS5', 'TS6'] },
-    askKind: {
-      type: 'STRING',
-      enum: ['max', 'min', 'value_freq', 'sample_size', 'count_condition', 'count_set', 'values_by_freq', 'compare', 'distinct_count', 'list_values', 'value_max', 'value_min', 'sum_values', 'remark'],
-    },
-    condition: {
-      type: 'OBJECT',
-      nullable: true,
-      properties: {
-        on: { type: 'STRING', enum: ['value', 'freq'] },
-        op: { type: 'STRING', enum: ['gte', 'gt', 'lte', 'lt', 'between', 'eq'] },
-        a: { type: 'NUMBER' },
-        b: { type: 'NUMBER', nullable: true },
-        phrase: { type: 'STRING' },
-      },
-    },
-    targets: { type: 'ARRAY', items: { type: 'STRING' } },
-    compareMode: { type: 'STRING', enum: ['diff', 'ratio', 'which_more'] },
-  },
-} as const;
-
-export const BAI22_ROOT_FIELDS_SCHEMA = {
-  frequencies: { type: 'ARRAY', items: { type: 'NUMBER', nullable: true } },
-  claimedFrequencies: { type: 'ARRAY', nullable: true, items: { type: 'NUMBER', nullable: true } },
-  claimedBy: { type: 'STRING', nullable: true },
-  donVi: { type: 'STRING' },
-} as const;
 
 /** Khóa so khớp giá trị: "6,5" ≡ "6.5", không phân biệt hoa thường */
 function catKey(c: string): string {

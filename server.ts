@@ -4,7 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
-import { initGemini, analyzeProblem } from './server/gemini.ts';
+import { initGemini, analyzeProblem, getLastAiStatus } from './server/gemini.ts';
 import { startProcessGeneration, getJob, upgradeProcess } from './server/processGenerator.ts';
 import { storage, isFirestoreConnected, getStorageStatus, checkFirestoreAccess } from './server/storage.ts';
 import { Student, Attempt, AnswerEvent, PolyaProcess } from './src/shared/types.ts';
@@ -99,7 +99,8 @@ app.get('/api/processes/:id', async (req, res) => {
     const proc = await upgradeProcess(found);
     res.json({ ok: true, data: proc });
   } catch (err: any) {
-    res.status(500).json({ ok: false, error: { code: 'SERVER_ERROR', message: err.message } });
+    console.error('API /api/processes/:id error:', err);
+    res.status(500).json({ ok: false, error: { code: 'SERVER_ERROR', message: err?.message || 'Lỗi máy chủ khi tải quy trình.' } });
   }
 });
 
@@ -126,7 +127,11 @@ app.post('/api/students', async (req, res) => {
     const normalized = `${name.trim().toLowerCase()}_${className.trim().toLowerCase()}_${school.trim().toLowerCase()}`;
     const studentId = 'stu_' + crypto.createHash('sha256').update(normalized).digest('hex').substring(0, 16);
 
-    let student = await storage.getStudent(studentId);
+    // Không để học sinh chờ Firestore: tra cứu tối đa 4 giây, lưu chạy nền (có hàng đợi tự ghi lại)
+    let student = await Promise.race([
+      storage.getStudent(studentId).catch(() => null),
+      new Promise<null>((r) => setTimeout(() => r(null), 4000)),
+    ]);
     if (!student) {
       student = {
         id: studentId,
@@ -135,7 +140,7 @@ app.post('/api/students', async (req, res) => {
         school: school.trim(),
         createdAt: new Date().toISOString(),
       };
-      await storage.saveStudent(student);
+      storage.saveStudent(student).catch((e) => console.warn('[API] Lưu học sinh lỗi (sẽ thử lại):', e));
     }
 
     res.json({ ok: true, data: student });
@@ -207,6 +212,8 @@ app.get('/api/health', (req, res) => {
       storage: getStorageStatus(),
       primaryModel: process.env.MODEL_PRIMARY || 'gemini-2.5-flash',
       fallbackModel: process.env.MODEL_FALLBACK || 'gemini-2.5-flash',
+      geminiKeySet: !!process.env.GEMINI_API_KEY,
+      lastAi: getLastAiStatus(),
       timestamp: new Date().toISOString(),
     },
   });

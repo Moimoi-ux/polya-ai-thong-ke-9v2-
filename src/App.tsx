@@ -68,15 +68,15 @@ export default function App() {
     setIsLoadingProcess(true);
     try {
       const res = await fetch(`/api/processes/${processId}`);
-      const data = await res.json();
-      if (data.ok && data.data) {
+      const data = await res.json().catch(() => null);
+      if (data?.ok && data.data) {
         setActiveProcess(data.data);
         setCurrentPage('workspace');
       } else {
-        alert('Không thể tải quy trình giải.');
+        alert(`Không thể tải quy trình giải (mã ${processId}, HTTP ${res.status}): ${data?.error?.message || 'máy chủ không trả dữ liệu'}`);
       }
-    } catch {
-      alert('Lỗi kết nối khi tải quy trình.');
+    } catch (err: any) {
+      alert(`Lỗi kết nối khi tải quy trình: ${err?.message || err}`);
     } finally {
       setIsLoadingProcess(false);
     }

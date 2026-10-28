@@ -14,7 +14,7 @@ function check(node: any, path: string) {
   if (!node || typeof node !== 'object') return errors.push(`${path}: không phải object`);
   for (const k of Object.keys(node)) if (!KEYS.has(k)) errors.push(`${path}: khóa "${k}" Gemini không hỗ trợ`);
   if (!TYPES.has(node.type)) errors.push(`${path}: type "${node.type}" không hợp lệ`);
-  if ('nullable' in node && typeof node.nullable !== 'boolean') errors.push(`${path}: nullable phải là true/false`);
+  if ('nullable' in node) errors.push(`${path}: không dùng "nullable" (giữ khuôn đơn giản như bản cũ đã chạy ổn định)`);
   if (node.enum !== undefined) {
     if (node.type !== 'STRING') errors.push(`${path}: enum chỉ dùng cho STRING`);
     if (!Array.isArray(node.enum) || node.enum.length === 0) errors.push(`${path}: enum rỗng`);
@@ -22,6 +22,9 @@ function check(node: any, path: string) {
       if (typeof v !== 'string' || v.trim() === '') errors.push(`${path}: enum có giá trị rỗng/không phải chuỗi (${JSON.stringify(v)})`);
     }
     if (new Set(node.enum).size !== node.enum.length) errors.push(`${path}: enum bị trùng`);
+  }
+  if (node.type === 'OBJECT' && path.includes('.items.properties[') && path.split('.properties[').length > 3) {
+    errors.push(`${path}: đối tượng lồng quá sâu trong mảng`);
   }
   if (node.type === 'OBJECT') {
     const props = node.properties || {};

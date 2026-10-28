@@ -851,6 +851,24 @@ export const TeacherPage: React.FC = () => {
               <span className="font-medium">Model Gemini dự phòng (Fallback):</span>
               <span className="font-bold text-blue-700">{systemHealth?.fallbackModel}</span>
             </div>
+            <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-start justify-between gap-3">
+              <span className="font-medium shrink-0">Lần gọi AI gần nhất:</span>
+              {systemHealth?.geminiKeySet === false ? (
+                <span className="font-bold text-red-600 text-right">⚠️ Chưa có khóa GEMINI_API_KEY trên máy chủ</span>
+              ) : !systemHealth?.lastAi ? (
+                <span className="text-slate-500 text-right">Chưa gọi AI kể từ khi máy chủ khởi động</span>
+              ) : systemHealth.lastAi.ok ? (
+                <span className="font-bold text-green-700 text-right">
+                  ✓ Thành công lúc {new Date(systemHealth.lastAi.at).toLocaleString('vi-VN')}
+                  {systemHealth.lastAi.message && <span className="block font-normal text-xs text-slate-500">{systemHealth.lastAi.message}</span>}
+                </span>
+              ) : (
+                <span className="text-red-700 text-right">
+                  <span className="font-bold">✗ Lỗi lúc {new Date(systemHealth.lastAi.at).toLocaleString('vi-VN')}</span>
+                  <span className="block font-mono text-[11px] break-all">{systemHealth.lastAi.message}</span>
+                </span>
+              )}
+            </div>
           </div>
         </div>
       )}

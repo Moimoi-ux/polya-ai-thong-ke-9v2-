@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { ProblemAnalysis, ProblemContext } from '../src/shared/types.ts';
 import { computeStatistics, extractDataSeries } from '../src/shared/statEngine.ts';
 import { reclassifyParts } from '../src/shared/bai22/appBridge.ts';
-import { BAI22_EXTRACTION_RULES, BAI22_HINT_SCHEMA } from '../src/shared/bai22/gemini.ts';
+import { BAI22_EXTRACTION_RULES } from '../src/shared/bai22/gemini.ts';
 import { normalizeProblemText } from '../src/shared/problemText.ts';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
@@ -46,6 +46,12 @@ function getActiveModel(): string {
   return primaryModel;
 }
 
+/** Kết quả gọi AI gần nhất – hiện ở trang Giáo viên → Tình trạng hệ thống để dễ tìm lỗi */
+export let lastAiStatus: { ok: boolean; at: string; message: string } | null = null;
+export function getLastAiStatus() {
+  return lastAiStatus;
+}
+
 export interface GeminiResponse<T> {
   ok: boolean;
   data?: T;
@@ -87,12 +93,15 @@ export async function callGemini(
   }
 
   let currentModel = getActiveModel();
-  const maxAttempts = 3;
+  const maxAttempts = 4;
+  // Dùng khuôn trả lời (schema) trước; nếu Gemini báo 400 vì khuôn → các lần sau gọi KHÔNG dùng khuôn
+  let useSchema = !!schema;
+  let schemaError = '';
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const parts: any[] = [];
-      if (prompt) parts.push({ text: prompt });
+      if (prompt) parts.push({ text: useSchema || !schema ? prompt : `${prompt}\n\nIMPORTANT: OUTPUT STRICTLY RAW VALID JSON ONLY.` });
       for (const p of contentsParts) parts.push(p);
 
       const config: any = {
@@ -101,7 +110,7 @@ export async function callGemini(
         maxOutputTokens: 4096,
       };
 
-      if (schema) {
+      if (useSchema) {
         config.responseMimeType = 'application/json';
         config.responseSchema = schema;
       }
@@ -113,10 +122,12 @@ export async function callGemini(
       });
 
       const text = response.text || '';
+      lastAiStatus = { ok: true, at: new Date().toISOString(), message: useSchema || !schema ? '' : `Đã gọi được AI (không dùng khuôn trả lời vì: ${schemaError.slice(0, 200)})` };
       return { ok: true, data: text };
     } catch (err: any) {
       const errMsg = String(err?.message || err);
-      console.warn(`[Gemini] Call attempt ${attempt} with model ${currentModel} failed:`, errMsg);
+      console.warn(`[Gemini] Call attempt ${attempt} with model ${currentModel}${useSchema ? ' (có schema)' : ''} failed:`, errMsg);
+      lastAiStatus = { ok: false, at: new Date().toISOString(), message: errMsg.slice(0, 600) };
 
       // Check 429 limit: 0 -> pause model 24h
       if (errMsg.includes('limit: 0') || errMsg.includes('RESOURCE_EXHAUSTED')) {
@@ -146,22 +157,21 @@ export async function callGemini(
         continue;
       }
 
-      // 400 (thường do khuôn trả lời/schema) -> thử lại KHÔNG dùng schema, chỉ yêu cầu trả JSON
-      if (errMsg.includes('400') && schema) {
-        try {
-          const fallbackRes = await ai.models.generateContent({
-            model: currentModel,
-            contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nIMPORTANT: OUTPUT STRICTLY RAW VALID JSON ONLY.` }, ...contentsParts] }],
-            config: { systemInstruction, temperature: 0.1, maxOutputTokens: 4096, responseMimeType: 'application/json' },
-          });
-          return { ok: true, data: fallbackRes.text || '' };
-        } catch (innerErr) {
-          console.warn('[Gemini] Fallback without schema failed:', innerErr);
-        }
-        // Lỗi 400 không tự hết khi gọi lại y hệt → dừng ngay, báo lỗi rõ ràng
+      // 400 khi đang dùng khuôn trả lời → bỏ khuôn, thử lại ngay (cách bản v3 đã chạy được)
+      if (errMsg.includes('400') && useSchema) {
+        useSchema = false;
+        schemaError = errMsg;
+        continue;
+      }
+
+      // 400 cả khi không dùng khuôn → gọi lại y hệt cũng vô ích
+      if (errMsg.includes('400')) {
         return {
           ok: false,
-          error: { code: 'AI_BAD_REQUEST', message: `Dịch vụ AI từ chối yêu cầu: ${errMsg.substring(0, 400)}` },
+          error: {
+            code: 'AI_BAD_REQUEST',
+            message: `Dịch vụ AI từ chối yêu cầu: ${errMsg.substring(0, 400)}${schemaError ? ` | (lỗi khuôn trả lời trước đó: ${schemaError.substring(0, 200)})` : ''}`,
+          },
         };
       }
 
@@ -206,9 +216,9 @@ export const ANALYSIS_SCHEMA = {
     valueKind: { type: 'STRING', enum: ['numeric', 'categorical'] },
     rawValues: { type: 'ARRAY', items: { type: 'STRING' } },
     categories: { type: 'ARRAY', items: { type: 'STRING' } },
-    frequencies: { type: 'ARRAY', items: { type: 'NUMBER', nullable: true } },
-    claimedFrequencies: { type: 'ARRAY', nullable: true, items: { type: 'NUMBER', nullable: true } },
-    claimedBy: { type: 'STRING', nullable: true },
+    frequencies: { type: 'ARRAY', items: { type: 'NUMBER' } },
+    claimedFrequencies: { type: 'ARRAY', items: { type: 'NUMBER' } },
+    claimedBy: { type: 'STRING' },
     statedSampleSize: { type: 'NUMBER' },
     valueLabel: { type: 'STRING' },
     freqLabel: { type: 'STRING' },
@@ -222,7 +232,15 @@ export const ANALYSIS_SCHEMA = {
           question: { type: 'STRING' },
           dangBai: { type: 'STRING', enum: ['TS1', 'TS2', 'TS3', 'TS4', 'TS5', 'TS6'] },
           chartKind: { type: 'STRING', enum: ['none', 'bar', 'line'] },
-          hint: BAI22_HINT_SCHEMA,
+          // Gợi ý phân loại – để PHẲNG, chỉ dùng STRING/NUMBER (giống khuôn cũ đã chạy ổn định)
+          askKind: { type: 'STRING' },
+          targetValue: { type: 'STRING' },
+          targets: { type: 'ARRAY', items: { type: 'STRING' } },
+          condOn: { type: 'STRING' },
+          condOp: { type: 'STRING' },
+          condA: { type: 'NUMBER' },
+          condB: { type: 'NUMBER' },
+          compareMode: { type: 'STRING' },
         },
         required: ['label', 'question', 'dangBai', 'chartKind'],
       },
@@ -265,7 +283,7 @@ QUY TẮC TRÍCH XUẤT:
 - valueLabel: tên ngắn của dòng giá trị như trong đề/SGK (ví dụ "Cỡ giày", "Điểm", "Đội bóng", "Số anh, chị, em ruột"); freqLabel: tên dòng tần số nếu đề đặt khác "Tần số" (ví dụ "Số bạn", "Số học sinh"), nếu không thì để "Tần số".
 - statedSampleSize: cỡ mẫu nếu đề nêu rõ (ví dụ "của 20 học sinh"), không nêu thì -1.
 - context: doiTuong (danh từ ngắn chỉ đối tượng được đếm, ví dụ "bạn nam", "y tá", "trận đấu"), dauHieu (ví dụ "cỡ giày"), donVi (đơn vị của giá trị, ví dụ "năm", "điểm"; không có thì ""), tenMau.
-- parts: mỗi ý một phần tử {label, question (chép NGUYÊN VĂN câu hỏi), dangBai, chartKind, hint}. Nếu một câu yêu cầu vẽ CẢ biểu đồ cột VÀ biểu đồ đoạn thẳng thì tách thành 2 phần tử: label "a.1" (TS2) và "a.2" (TS3) (thay a bằng nhãn của ý). Nếu một ý vừa yêu cầu lập bảng vừa hỏi giá trị nhiều nhất thì tách thành TS1 (label "b.1") và TS4 (label "b.2"). Đề không đánh nhãn ý thì dùng label "a".
+- parts: mỗi ý một phần tử {label, question (chép NGUYÊN VĂN câu hỏi), dangBai, chartKind, và các trường gợi ý askKind, targets, condOn, condOp, condA, condB, compareMode nếu có}. Nếu một câu yêu cầu vẽ CẢ biểu đồ cột VÀ biểu đồ đoạn thẳng thì tách thành 2 phần tử: label "a.1" (TS2) và "a.2" (TS3) (thay a bằng nhãn của ý). Nếu một ý vừa yêu cầu lập bảng vừa hỏi giá trị nhiều nhất thì tách thành TS1 (label "b.1") và TS4 (label "b.2"). Đề không đánh nhãn ý thì dùng label "a".
 - chartKind = "none" cho TS1, TS4, TS5, TS6.
 
 ${BAI22_EXTRACTION_RULES}`;
@@ -337,7 +355,8 @@ export function sanitizeAnalysis(raw: any): ProblemAnalysis {
   a.rawValues = Array.isArray(a.rawValues) ? a.rawValues.map((v: any) => String(v).trim()).filter(Boolean) : [];
   a.categories = Array.isArray(a.categories) ? a.categories.map((v: any) => String(v).trim()).filter(Boolean) : [];
   // null = ô tần số đề để trống (dạng TS5) – giữ nguyên để code nhận ra
-  const toFreq = (v: any) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+  // Ô thiếu: AI ghi -1 (hoặc null ở dữ liệu cũ) → null
+  const toFreq = (v: any) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) || Number(v) < 0 ? null : Number(v));
   a.frequencies = Array.isArray(a.frequencies) ? a.frequencies.map(toFreq) : [];
   if (Array.isArray(a.claimedFrequencies) && a.claimedFrequencies.length) {
     a.claimedFrequencies = a.claimedFrequencies.map(toFreq);
@@ -377,7 +396,21 @@ export function sanitizeAnalysis(raw: any): ProblemAnalysis {
         dangBai,
         chartKind,
       };
-      const hint = p.hint && typeof p.hint === 'object' ? { ...p.hint } : p.askKind ? { dangBai, askKind: p.askKind, targets: p.targetValue ? [String(p.targetValue)] : [] } : null;
+      // Gợi ý của AI: dạng phẳng (askKind, condOp, condA...) hoặc dạng cũ (hint{...}) đều được hiểu
+      let hint: any = p.hint && typeof p.hint === 'object' ? { ...p.hint } : null;
+      if (!hint && (p.askKind || p.condOp || (Array.isArray(p.targets) && p.targets.length) || p.targetValue)) {
+        const num = (x: any) => (x === null || x === undefined || x === '' || !Number.isFinite(Number(x)) ? undefined : Number(x));
+        const targets = Array.isArray(p.targets) && p.targets.length ? p.targets.map(String) : p.targetValue ? [String(p.targetValue)] : [];
+        hint = {
+          dangBai,
+          ...(p.askKind ? { askKind: String(p.askKind) } : {}),
+          ...(p.condOp && num(p.condA) !== undefined
+            ? { condition: { on: p.condOn === 'freq' ? 'freq' : 'value', op: String(p.condOp), a: num(p.condA), ...(num(p.condB) !== undefined ? { b: num(p.condB) } : {}) } }
+            : {}),
+          ...(targets.length ? { targets } : {}),
+          ...(p.compareMode ? { compareMode: String(p.compareMode) } : {}),
+        };
+      }
       if (hint) {
         if (!hint.dangBai) hint.dangBai = dangBai;
         out.hint = JSON.parse(JSON.stringify(hint));
